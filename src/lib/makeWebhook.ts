@@ -110,6 +110,26 @@ export class MakeWebhookService {
       if (response.ok || response.status === 200 || response.status === 204 || response.status === 202) {
         return { success: true, status: response.status, method: 'json-cors' };
       }
+
+      // Capture specific server response text if available
+      let errorDetail = '';
+      try {
+        const text = await response.text();
+        if (text) {
+          if (text.includes('Queue is full')) {
+            errorDetail = 'התור ב-Make.com מלא (Queue is full). יש להפעיל את ה-Scenario ב-Make או לרוקן את התור';
+          } else {
+            errorDetail = text;
+          }
+        }
+      } catch (_) {}
+
+      return {
+        success: false,
+        status: response.status,
+        error: errorDetail || `שרת Make החזיר שגיאה (קוד ${response.status})`,
+        method: 'json-cors'
+      };
     } catch (err: any) {
       console.warn(`Standard fetch failed for ${endpoint}, testing no-cors fallback:`, err);
     }

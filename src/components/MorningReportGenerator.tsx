@@ -18,7 +18,8 @@ import {
   Layers,
   ArrowRight,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  Phone
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, SystemConfig } from '../types';
@@ -50,12 +51,13 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
   const [statusFilter, setStatusFilter] = useState<'WORK_PLAN' | 'ALL'>('WORK_PLAN');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('ALL');
   const [driverFilter, setDriverFilter] = useState<string>('ALL');
+  const [targetPhone, setTargetPhone] = useState<string>(config.dispatchPhone || '0509620049');
   const [customReportText, setCustomReportText] = useState<string>('');
   const [isGenerated, setIsGenerated] = useState<boolean>(true);
   const [isSyncingFromSheets, setIsSyncingFromSheets] = useState<boolean>(false);
   const [isSendingWebhook, setIsSendingWebhook] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
-  const [webhookResult, setWebhookResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [webhookResult, setWebhookResult] = useState<{ success: boolean; message: string; isQueueFull?: boolean } | null>(null);
 
   // Filtered orders list
   const filteredOrders = useMemo(() => {
@@ -293,15 +295,49 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
     setTimeout(() => setCopySuccess(false), 2500);
   };
 
-  // Direct WhatsApp Open
-  const handleOpenWhatsAppDirect = () => {
+  // Safe WhatsApp Launcher helper (Bypasses iframe popup restrictions)
+  const launchWhatsAppUrl = (url: string) => {
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (_) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Direct WhatsApp Open to target phone
+  const handleOpenWhatsAppDirect = (overridePhone?: string) => {
     const textToSend = customReportText || buildReportText(selectedOrders);
-    const cleanPhone = MakeWebhookService.cleanPhoneNumber(config.dispatchPhone);
+    const phoneToUse = overridePhone || targetPhone || config.dispatchPhone;
+    const cleanPhone = MakeWebhookService.cleanPhoneNumber(phoneToUse);
     const encoded = encodeURIComponent(textToSend);
     const url = cleanPhone
       ? `https://wa.me/${cleanPhone}?text=${encoded}`
       : `https://api.whatsapp.com/send?text=${encoded}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    launchWhatsAppUrl(url);
+  };
+
+  // Share to any WhatsApp group or contact
+  const handleShareToWhatsAppGroup = () => {
+    const textToSend = customReportText || buildReportText(selectedOrders);
+    const encoded = encodeURIComponent(textToSend);
+    const url = `https://api.whatsapp.com/send?text=${encoded}`;
+    launchWhatsAppUrl(url);
+  };
+
+  // Direct WhatsApp Web link
+  const handleOpenWhatsAppWeb = (overridePhone?: string) => {
+    const textToSend = customReportText || buildReportText(selectedOrders);
+    const phoneToUse = overridePhone || targetPhone || config.dispatchPhone;
+    const cleanPhone = MakeWebhookService.cleanPhoneNumber(phoneToUse);
+    const encoded = encodeURIComponent(textToSend);
+    const url = `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
+    launchWhatsAppUrl(url);
   };
 
   // Send to Webhook (Make / Dispatcher)
@@ -310,11 +346,14 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
     setIsSendingWebhook(true);
     setWebhookResult(null);
 
+    const phoneToUse = targetPhone || config.dispatchPhone;
+
     try {
       const extraPayload = {
         event: 'morning_report_generated',
         date: getFormattedDate(),
-        dispatchPhone: config.dispatchPhone,
+        dispatchPhone: phoneToUse,
+        targetPhone: phoneToUse,
         totalOrdersCount: selectedOrders.length,
         orders: selectedOrders.map((o) => ({
           orderNumber: o.orderNumber,
@@ -329,7 +368,7 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
 
       const result = await MakeWebhookService.sendCustomWhatsAppMessage(
         textToSend,
-        config.dispatchPhone,
+        phoneToUse,
         extraPayload,
         config
       );
@@ -342,16 +381,20 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
         });
         confetti({ particleCount: 60, spread: 65, origin: { y: 0.65 } });
       } else {
+        const isQueueFull = result.error?.includes('Queue is full') || result.responseStatus === 400;
         setWebhookResult({
           success: false,
-          message: `שגיאה בשידור ל-Make: ${result.error || 'בדוק שתרחיש Make מופעל (Active)'}. באפשרותך ללחוץ על "פתח בוואטסאפ ישיר" לשליחה מיידית!`
+          isQueueFull,
+          message: isQueueFull
+            ? 'שרת Make עמוס (Queue is full) או שה-Scenario כבוי. לחץ מיד על כפתור "פתח בוואטסאפ ישיר" לשליחה ללא תלות ב-Make!'
+            : `שגיאה בשידור ל-Make: ${result.error || 'בדוק שתרחיש Make מופעל (Active)'}. לחץ על "פתח בוואטסאפ ישיר" לשליחה מיידית!`
         });
       }
     } catch (e: any) {
       setIsSendingWebhook(false);
       setWebhookResult({
         success: false,
-        message: `שגיאת רשת: ${e?.message || 'אנא השתמש בכפתור פתח בוואטסאפ ישיר'}`
+        message: `שגיאת תקשורת: ${e?.message || 'אנא השתמש בכפתור פתח בוואטסאפ ישיר'}`
       });
     }
   };
@@ -623,21 +666,80 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
               />
             </div>
 
+            {/* Destination Phone & Quick Options */}
+            <div className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800 space-y-2 mt-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>מספר טלפון / יעד לשליחה:</span>
+                </label>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {MakeWebhookService.cleanPhoneNumber(targetPhone)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={targetPhone}
+                  onChange={(e) => setTargetPhone(e.target.value)}
+                  placeholder="050-9620049"
+                  className="w-full bg-slate-900 text-white font-mono text-xs px-3 py-1.5 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500"
+                  dir="ltr"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTargetPhone(config.dispatchPhone || '0509620049')}
+                  className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                >
+                  סדרן ({config.dispatchPhone || '0509620049'})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetPhone('0501234567')}
+                  className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                >
+                  חכמת (מנוף)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetPhone('0507654321')}
+                  className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
+                >
+                  עלי (משאית)
+                </button>
+              </div>
+            </div>
+
             {/* Webhook status message banner */}
             {webhookResult && (
               <div
-                className={`mt-3 p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                className={`mt-3 p-3 rounded-2xl text-xs font-bold space-y-2 ${
                   webhookResult.success
                     ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
                     : 'bg-rose-950/80 text-rose-300 border border-rose-800'
                 }`}
               >
-                {webhookResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <div className="flex items-center gap-2">
+                  {webhookResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>{webhookResult.message}</span>
+                </div>
+
+                {!webhookResult.success && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenWhatsAppDirect()}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl flex items-center justify-center gap-1.5 shadow-md cursor-pointer text-xs animate-pulse"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>עקוף תקלה: שלח כעת ישירות בוואטסאפ 💬</span>
+                  </button>
                 )}
-                <span>{webhookResult.message}</span>
               </div>
             )}
           </div>
@@ -673,11 +775,35 @@ export const MorningReportGenerator: React.FC<MorningReportGeneratorProps> = ({
               <button
                 id="btn-open-whatsapp-direct"
                 type="button"
-                onClick={handleOpenWhatsAppDirect}
+                onClick={() => handleOpenWhatsAppDirect()}
                 className="flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-950 transition-all cursor-pointer hover:scale-[1.02]"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>פתח בוואטסאפ ישיר 💬</span>
+                <span>פתח בוואטסאפ לסדרן 💬</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Share to WhatsApp Group or any Contact */}
+              <button
+                id="btn-share-whatsapp-group"
+                type="button"
+                onClick={handleShareToWhatsAppGroup}
+                className="flex items-center justify-center gap-2 py-2 px-3 bg-emerald-900/60 hover:bg-emerald-800/80 text-emerald-200 border border-emerald-700/60 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>שתף לקבוצה / איש קשר 👥</span>
+              </button>
+
+              {/* WhatsApp Web Direct */}
+              <button
+                id="btn-open-whatsapp-web"
+                type="button"
+                onClick={() => handleOpenWhatsAppWeb()}
+                className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>פתח ב-WhatsApp Web 💻</span>
               </button>
             </div>
 
