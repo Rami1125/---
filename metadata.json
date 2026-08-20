@@ -1,0 +1,6 @@
+{
+  "name": "SabanOS Delivery & Cross-Audit",
+  "description": "Delivery notes OCR, order cross-audit, dispatch WhatsApp automation, and smart inventory forecasting engine for H. Saban Building Materials.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
