@@ -6,6 +6,7 @@ import {
   FolderOpen,
   TrendingUp,
   Truck,
+  BookOpen,
   Settings,
   Sparkles
 } from 'lucide-react';
@@ -17,6 +18,7 @@ export type TabType =
   | 'customers'
   | 'smart_dashboard'
   | 'logistics'
+  | 'dictionary'
   | 'settings';
 
 interface NavigationProps {
@@ -44,7 +46,7 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
     {
       id: 'delivery_notes' as TabType,
-      label: 'סריקת תעודות ו-OCR',
+      label: 'תעודות משלוח ו-OCR',
       icon: FileCheck2,
       badge: unverifiedNotesCount > 0 ? unverifiedNotesCount : undefined,
       badgeColor: 'bg-blue-100 text-blue-800'
@@ -63,14 +65,19 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
     {
       id: 'smart_dashboard' as TabType,
-      label: 'דשבורד חכם וחיזוי רכש',
+      label: 'דשבורד חכם ורכש',
       icon: TrendingUp,
       sparkle: true
     },
     {
       id: 'logistics' as TabType,
-      label: 'ערים ומסלולים',
+      label: 'ערים ולוגיסטיקה',
       icon: Truck
+    },
+    {
+      id: 'dictionary' as TabType,
+      label: 'מילון לוגיסטי',
+      icon: BookOpen
     },
     {
       id: 'settings' as TabType,
@@ -90,7 +97,7 @@ export const Navigation: React.FC<NavigationProps> = ({
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-150 relative ${
+                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-150 relative cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -123,3 +130,4 @@ export const Navigation: React.FC<NavigationProps> = ({
     </div>
   );
 };
+

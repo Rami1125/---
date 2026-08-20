@@ -48,6 +48,7 @@ export const LogisticsView: React.FC<LogisticsViewProps> = ({
       customerName: newCity.customerName,
       deliveryCount: newCity.deliveryCount || 1,
       distance: newCity.distance || '15 ק"מ',
+      duration: newCity.duration || '20 דק\'',
       wazeUrl
     };
 

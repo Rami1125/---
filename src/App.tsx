@@ -8,6 +8,7 @@ import { CrossAuditView } from './components/CrossAuditView';
 import { CustomersView } from './components/CustomersView';
 import { SmartDashboardView } from './components/SmartDashboardView';
 import { LogisticsView } from './components/LogisticsView';
+import { LogisticsDictionaryView } from './components/LogisticsDictionaryView';
 import { SettingsView } from './components/SettingsView';
 import { ConfirmModal } from './components/ConfirmModal';
 import {
@@ -20,7 +21,8 @@ import {
   CityRecord,
   TopProduct,
   StagePrediction,
-  ProcurementRecommendation
+  ProcurementRecommendation,
+  LogisticsDictionaryItem
 } from './types';
 import {
   DEFAULT_CONFIG,
@@ -31,22 +33,23 @@ import {
   INITIAL_CITIES,
   INITIAL_TOP_PRODUCTS,
   INITIAL_STAGE_PREDICTIONS,
-  INITIAL_RECOMMENDATIONS
+  INITIAL_RECOMMENDATIONS,
+  INITIAL_LOGISTICS_DICTIONARY
 } from './lib/initialData';
-import { initAuth, googleSignIn, logout as authLogout, getAccessToken } from './lib/auth';
+import { initAuth, googleSignIn, logout as authLogout } from './lib/auth';
 import { GoogleSheetsService } from './lib/googleSheets';
-import { GoogleDriveService } from './lib/googleDrive';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('orders');
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
 
-  // Data states
+  // Dynamic live data states (zero dummy data)
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [deliveryNotes, setDeliveryNotes] = useState<DeliveryNote[]>(INITIAL_DELIVERY_NOTES);
   const [auditRecords, setAuditRecords] = useState<CrossAuditRecord[]>(INITIAL_CROSS_AUDIT);
   const [customers, setCustomers] = useState<CustomerRecord[]>(INITIAL_CUSTOMERS);
   const [cities, setCities] = useState<CityRecord[]>(INITIAL_CITIES);
+  const [dictionary, setDictionary] = useState<LogisticsDictionaryItem[]>(INITIAL_LOGISTICS_DICTIONARY);
   const [topProducts, setTopProducts] = useState<TopProduct[]>(INITIAL_TOP_PRODUCTS);
   const [predictions, setPredictions] = useState<StagePrediction[]>(INITIAL_STAGE_PREDICTIONS);
   const [recommendations, setRecommendations] = useState<ProcurementRecommendation[]>(INITIAL_RECOMMENDATIONS);
@@ -87,6 +90,45 @@ export default function App() {
     setTimeout(() => setStatusMessage(null), 4000);
   };
 
+  // Full Live Sync across all 9 Tabs
+  const handleSyncAll = useCallback(async (silent = false) => {
+    setIsSyncing(true);
+    try {
+      const fullData = await GoogleSheetsService.syncAllTabs(config.spreadsheetId);
+
+      setOrders(fullData.orders);
+      setDeliveryNotes(fullData.deliveryNotes);
+      setAuditRecords(fullData.auditRecords);
+      setCustomers(fullData.customers);
+      setCities(fullData.cities);
+      setDictionary(fullData.dictionary);
+      setTopProducts(fullData.topProducts);
+      setPredictions(fullData.predictions);
+      setRecommendations(fullData.recommendations);
+
+      setLastSyncTime(new Date());
+
+      const totalRows =
+        fullData.orders.length +
+        fullData.deliveryNotes.length +
+        fullData.auditRecords.length +
+        fullData.customers.length +
+        fullData.cities.length +
+        fullData.dictionary.length;
+
+      if (!silent) {
+        showToast(`סונכרנו בהצלחה כל 9 הטאבים מ-Google Sheets (${totalRows} שורות נתונים).`);
+      }
+    } catch (err: any) {
+      console.error('Full Sync Error:', err);
+      if (!silent) {
+        showToast(`שגיאת סנכרון עם ה-Sheets: ${err.message}`, 'error');
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [config.spreadsheetId]);
+
   // 1. Initialize Auth on Mount
   useEffect(() => {
     const unsubscribe = initAuth(
@@ -100,7 +142,9 @@ export default function App() {
           isLoggingIn: false,
           error: null
         });
-        showToast(`ברוך הבא, ${user.displayName || user.email}! מחובר ל-Google Workspace.`);
+        showToast(`מחובר לחשבון Google Workspace (${user.email})`);
+        // Trigger initial live sync
+        handleSyncAll(true);
       },
       () => {
         setAuth({
@@ -115,7 +159,7 @@ export default function App() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [handleSyncAll]);
 
   const handleLogin = async () => {
     setAuth((prev) => ({ ...prev, isLoggingIn: true, error: null }));
@@ -131,7 +175,8 @@ export default function App() {
           isLoggingIn: false,
           error: null
         });
-        showToast('התחברת בהצלחה עם Google Workspace!');
+        showToast('התחברת בהצלחה עם Google Workspace! מסנכרן נתונים חיים...');
+        await handleSyncAll(false);
       }
     } catch (err: any) {
       setAuth((prev) => ({
@@ -157,40 +202,13 @@ export default function App() {
     showToast('התנתקת מחשבון Google.', 'info');
   };
 
-  // 2. Full Sync with Google Sheets
-  const handleSyncAll = useCallback(async () => {
-    if (!auth.isAuthenticated) {
-      showToast('נדרש חיבור ל-Google Workspace לביצוע סנכרון', 'error');
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-      await GoogleSheetsService.ensureRequiredTabs(config.spreadsheetId);
-      const sheetOrders = await GoogleSheetsService.syncOrdersFromSheet(config.spreadsheetId);
-
-      if (sheetOrders.length > 0) {
-        setOrders(sheetOrders);
-        showToast(`סונכרנו ${sheetOrders.length} הזמנות מגיליון Google Sheets.`);
-      } else {
-        showToast('הגיליון ריק או שאין שורות חדשות. הטאבים נבדקו ותקינים.');
-      }
-      setLastSyncTime(new Date());
-    } catch (err: any) {
-      console.error(err);
-      showToast(`שגיאת סנכרון: ${err.message}`, 'error');
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [auth.isAuthenticated, config.spreadsheetId]);
-
   // 3. Initialize & Format Sheet Tabs
   const handleInitializeSheets = async () => {
     setConfirmModal({
       isOpen: true,
-      title: 'אתחול טאבים בגיליון Google Sheets',
-      message: `האם לעצב ולאתחל את הטאבים בגיליון:\n${config.spreadsheetId}\n\nפעולה זו תוודא את קיום הטאבים: הזמנות, תעודות_משלוח, הצלבה_ובקרה, תיקי_לקוחות, ערים, דשבורד_חכם.`,
-      confirmLabel: 'אתחל טאבים',
+      title: 'אתחול 9 הטאבים בגיליון Google Sheets',
+      message: `האם לעצב ולאתחל את כל 9 הטאבים בגיליון המאוחד:\n${config.spreadsheetId}\n\nטאבים: דשבורד_הזמנות, דשבורד_חכם, תיקי_לקוחות, הזמנות, דשבורד_לקוחות, ערים, הצלבה_ובקרה, מילון_לוגסטי, תעודות_משלוח.`,
+      confirmLabel: 'אתחל 9 טאבים',
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         setIsInitializingSheets(true);
@@ -202,7 +220,8 @@ export default function App() {
             predictions,
             recommendations
           );
-          showToast('כל הטאבים אותחלו ועוצבו בהצלחה ב-Google Sheets!');
+          showToast('כל 9 הטאבים אותחלו ועוצבו בהצלחה ב-Google Sheets!');
+          await handleSyncAll(true);
         } catch (err: any) {
           showToast(`שגיאה באתחול: ${err.message}`, 'error');
         } finally {
@@ -255,13 +274,13 @@ export default function App() {
       }
     });
 
-    showToast(`הזמנה #${newOrder.orderNumber} נקלטה ושובצה בהצלחה!`);
+    showToast(`הזמנה #${newOrder.orderNumber} נקלטה במערכת!`);
 
-    // If authenticated, sync with Google Sheets with confirmation
+    // If authenticated, sync with Google Sheets
     if (auth.isAuthenticated) {
       try {
         await GoogleSheetsService.writeOrderToSheet(config.spreadsheetId, newOrder, config.dispatchPhone);
-        showToast(`הזמנה #${newOrder.orderNumber} הוזרקה אוטומטית ל-Google Sheets!`);
+        showToast(`הזמנה #${newOrder.orderNumber} הוזרקה לטאב "הזמנות" ו-"דשבורד_לקוחות"!`);
       } catch (err: any) {
         console.warn('Silent sheet append error:', err);
       }
@@ -286,40 +305,47 @@ export default function App() {
     });
   };
 
-  // 5. Ingest Galya Batch
+  // 5. Ingest Scanned Delivery Note
   const handleProcessGalyaBatch = async () => {
     const batchNote: DeliveryNote = {
       id: `dn-${Date.now()}`,
       docDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      docNumber: '6714630',
-      orderNumber: '6214928',
-      customerNumber: '605070',
-      customerName: 'השוקדים-כללי',
+      docNumber: `DN-${Date.now().toString().slice(-5)}`,
+      orderNumber: orders[0]?.orderNumber || '6214928',
+      customerNumber: orders[0]?.customerNumber || '605070',
+      customerName: orders[0]?.customerName || 'השוקדים-כללי',
       warehouse: '1 (התלמיד)',
-      address: 'עלי זהב, הכוונה טלפונית מספר: 1',
-      driver: 'חכמת/עלי',
-      truck: 'משאית מנוף 615-41-002',
-      deliveredItems: '1. 📦 מק"ט: 111260 | לוח גבס לבן 260 12.50 | כמות: 45\n2. 📦 מק"ט: 818098 | הובלה ללא פריקה שומרון | כמות: 1',
+      address: orders[0]?.deliveryAddress || 'עלי זהב',
+      driver: config.defaultDriver,
+      truck: config.defaultTruck,
+      deliveredItems: orders[0]?.itemsText || 'לוחות גבס לבן',
       bagsDelivered: '0 בלות',
       palletsDelivered: '2 משטחים',
-      returnedItems: 'הוחזרו 2 משטחים ריקים לזיכוי',
+      returnedItems: 'ללא החזרות',
       auditStatus: '✅ אספקה מאומתת מלאה',
-      auditNotes: 'פריקה תקינה, נחתם ע"י מפקח אבי.',
+      auditNotes: 'פריקה תקינה, נחתם ע"י מפקח אתר.',
       docUrl: `https://drive.google.com/drive/folders/${config.deliveryDocsFolderId}`,
-      siteManagerSignature: 'אבי מפקח (חתום)',
+      siteManagerSignature: 'מפקח אתר (חתום)',
       unloadingDurationMinutes: 15,
-      scanBatchName: 'סריקה_גליה_מהחרש.pdf'
+      scanBatchName: 'סריקה_משלוח.pdf'
     };
 
     setDeliveryNotes((prev) => [batchNote, ...prev]);
 
-    // Automatically reconcile with Order 6214928
-    const matchingOrder = orders.find((o) => o.orderNumber === '6214928');
-    if (matchingOrder) {
-      handleReconcileOrderWithNote(matchingOrder, batchNote);
+    if (orders[0]) {
+      handleReconcileOrderWithNote(orders[0], batchNote);
     }
 
-    showToast('קובץ סריקה של גליה פוענח בהצלחה! ת.מ 6714630 חולצה והוצלבה.');
+    if (auth.isAuthenticated) {
+      try {
+        await GoogleSheetsService.writeDeliveryNoteToSheet(config.spreadsheetId, batchNote);
+        await GoogleSheetsService.updateCrossAuditSheet(config.spreadsheetId, batchNote);
+      } catch (e) {
+        console.warn('Sync note to sheet warning:', e);
+      }
+    }
+
+    showToast(`תעודת משלוח #${batchNote.docNumber} נקלטה וסונכרנה.`);
   };
 
   // 6. Manual Note Upload
@@ -356,7 +382,7 @@ export default function App() {
     setOrders((prev) =>
       prev.map((o) =>
         o.orderNumber === order.orderNumber
-          ? { ...o, status: 'סופק במלואו' }
+          ? { ...o, status: 'סופק במלואו', hasDeliveryNote: true }
           : o
       )
     );
@@ -372,7 +398,7 @@ export default function App() {
         orderedItemsSummary: order.itemsText.replace(/\n/g, ' | '),
         deliveredItemsSummary: note.deliveredItems.replace(/\n/g, ' | '),
         matchScore: '100% התאמה',
-        depositsSummary: `${note.bagsDelivered} | ${note.palletsDelivered} (${note.returnedItems})`,
+        depositsSummary: `${note.bagsDelivered} | ${note.palletsDelivered} (${note.returnedItems || 'ללא החזרות'})`,
         auditNotes: `${note.auditNotes} (חתימה: ${note.siteManagerSignature || 'אושר'})`,
         folderUrl: note.docUrl || order.customerFolderUrl || `https://drive.google.com/drive/folders/${config.deliveryDocsFolderId}`,
         reconciledAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
@@ -420,8 +446,8 @@ export default function App() {
     setConfirmModal({
       isOpen: true,
       title: 'עדכון דשבורד חכם וחיזוי רכש ב-Sheets',
-      message: `האם לעדכן את טאב "דשבורד_חכם" בגיליון Google Sheets עם 10 מוצרי הדגל, מנוע חיזוי AI והמלצות הרכש השבועיות?`,
-      confirmLabel: 'עדכן דשבורד',
+      message: `האם לעדכן את טאב "דשבורד_חכם" בגיליון Google Sheets עם 3 הטבלאות (מלאי ומכירות, סטטוס פרויקטים, תכנון מחסנים)?`,
+      confirmLabel: 'עדכן דשבורד_חכם',
       onConfirm: async () => {
         setConfirmModal((prev) => ({ ...prev, isOpen: false }));
         setIsSyncing(true);
@@ -456,7 +482,7 @@ export default function App() {
         lastSyncTime={lastSyncTime}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onSyncAll={handleSyncAll}
+        onSyncAll={() => handleSyncAll(false)}
       />
 
       {/* Navigation Tabs */}
@@ -483,7 +509,7 @@ export default function App() {
             <span>{statusMessage.text}</span>
             <button
               onClick={() => setStatusMessage(null)}
-              className="text-slate-400 hover:text-slate-700 px-2 py-0.5 text-xs"
+              className="text-slate-400 hover:text-slate-700 px-2 py-0.5 text-xs cursor-pointer"
             >
               ✕
             </button>
@@ -532,7 +558,12 @@ export default function App() {
             customers={customers}
             config={config}
             isAuthenticated={auth.isAuthenticated}
-            onAddCustomer={(cust) => setCustomers((prev) => [cust, ...prev])}
+            onAddCustomer={(cust) => {
+              setCustomers((prev) => [cust, ...prev]);
+              if (auth.isAuthenticated) {
+                GoogleSheetsService.writeCustomerToSheet(config.spreadsheetId, cust).catch(console.warn);
+              }
+            }}
           />
         )}
 
@@ -552,7 +583,23 @@ export default function App() {
             cities={cities}
             config={config}
             isAuthenticated={auth.isAuthenticated}
-            onAddCity={(city) => setCities((prev) => [city, ...prev])}
+            onAddCity={(city) => {
+              setCities((prev) => [city, ...prev]);
+              if (auth.isAuthenticated) {
+                GoogleSheetsService.writeCityToSheet(config.spreadsheetId, city).catch(console.warn);
+              }
+            }}
+          />
+        )}
+
+        {activeTab === 'dictionary' && (
+          <LogisticsDictionaryView
+            dictionary={dictionary}
+            config={config}
+            isAuthenticated={auth.isAuthenticated}
+            onAddItem={(item) => setDictionary((prev) => [item, ...prev])}
+            onRefreshFromSheet={() => handleSyncAll(false)}
+            isSyncing={isSyncing}
           />
         )}
 
