@@ -23,10 +23,12 @@ export interface Order {
   wazeLink?: string; // קישור Waze
   waShareLink?: string; // שיתוף WhatsApp
   hasDeliveryNote?: boolean | string; // קיימת תעודת משלוח?
-  status: 'מאושר' | 'בסידור עבודה' | 'סופק במלואו' | 'אספקה חלקית' | 'ממתין לתעודה';
+  status: 'מאושר' | 'בסידור עבודה' | 'בדרך לאתר' | 'סופק במלואו' | 'אספקה חלקית' | 'ממתין לתעודה' | 'בוטל' | string;
   distance: string;
   duration: string;
   truck?: string;
+  deliveryDate?: string; // תאריך יעד אספקה (YYYY-MM-DD)
+  deliveryTime?: string; // שעת יעד אספקה (HH:MM)
   notes?: string;
 }
 

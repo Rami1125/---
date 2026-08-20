@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SystemConfig } from '../types';
 import { DEFAULT_CONFIG } from '../lib/initialData';
+import { MakeWebhookService } from '../lib/makeWebhook';
 
 interface SettingsViewProps {
   config: SystemConfig;
@@ -34,6 +35,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [formData, setFormData] = useState<SystemConfig>(config);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [testStatus, setTestStatus] = useState<{ loading: boolean; result: { success: boolean; message: string } | null }>({
+    loading: false,
+    result: null
+  });
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,13 +224,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="space-y-3">
             {formData.makeWebhookEndpoints.map((ep, idx) => (
-              <div key={idx}>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Endpoint #{idx + 1}:
-                </label>
+              <div key={idx} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Endpoint #{idx + 1}:
+                  </label>
+                  {formData.makeWebhookEndpoints.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEndpoints = formData.makeWebhookEndpoints.filter((_, i) => i !== idx);
+                        setFormData({ ...formData, makeWebhookEndpoints: newEndpoints });
+                      }}
+                      className="text-[11px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                    >
+                      הסר כתובת זו
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={ep}
+                  placeholder="https://hook.eu1.make.com/..."
                   onChange={(e) => {
                     const newEndpoints = [...formData.makeWebhookEndpoints];
                     newEndpoints[idx] = e.target.value;
@@ -235,6 +255,78 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </div>
             ))}
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    ...formData,
+                    makeWebhookEndpoints: [...formData.makeWebhookEndpoints, '']
+                  });
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
+              >
+                + הוסף כתובת Webhook נוספת
+              </button>
+            </div>
+
+            {/* Live Webhook Test Button */}
+            <div className="mt-3 p-3 bg-purple-50 rounded-xl border border-purple-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-black text-purple-900">בדיקת שידור חי ל-Make.com</h4>
+                  <p className="text-[11px] text-purple-700">שלח הודעת בדיקה מיידית לוואטסאפ לוודא שה-Webhook פועל</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setTestStatus({ loading: true, result: null });
+                    try {
+                      const res = await MakeWebhookService.sendCustomWhatsAppMessage(
+                        `🔔 *הודעת בדיקת חיבור מערכת ח. סבן*\n\nהחיבור בין הדשבורד ל-Make.com פועל באופן תקין! 🚀\nתאריך: ${new Date().toLocaleString('he-IL')}`,
+                        formData.dispatchPhone,
+                        { event: 'system_webhook_test' },
+                        formData
+                      );
+                      setTestStatus({
+                        loading: false,
+                        result: {
+                          success: res.success,
+                          message: res.success
+                            ? `ההודעה שודרה בהצלחה ל-Make (${res.endpointUsed})! שיטה: ${res.methodUsed || 'CORS'}`
+                            : `שגיאה: ${res.error || 'נכשל'}`
+                        }
+                      });
+                    } catch (e: any) {
+                      setTestStatus({
+                        loading: false,
+                        result: {
+                          success: false,
+                          message: `שגיאת רשת: ${e?.message || 'לא ניתן לשדר'}`
+                        }
+                      });
+                    }
+                  }}
+                  disabled={testStatus.loading}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {testStatus.loading ? 'בודק שידור...' : '🚀 שלח הודעת בדיקה ל-Make'}
+                </button>
+              </div>
+
+              {testStatus.result && (
+                <div
+                  className={`mt-2.5 p-2 rounded-lg text-xs font-bold ${
+                    testStatus.result.success
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : 'bg-rose-100 text-rose-900 border border-rose-300'
+                  }`}
+                >
+                  {testStatus.result.message}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

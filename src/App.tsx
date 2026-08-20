@@ -3,6 +3,7 @@ import { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { Navigation, TabType } from './components/Navigation';
 import { OrdersView } from './components/OrdersView';
+import { MorningReportGenerator } from './components/MorningReportGenerator';
 import { DeliveryNotesView } from './components/DeliveryNotesView';
 import { CrossAuditView } from './components/CrossAuditView';
 import { CustomersView } from './components/CustomersView';
@@ -43,8 +44,19 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('orders');
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
 
-  // Dynamic live data states (zero dummy data)
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  // Dynamic live data states with local persistence locking
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem('saban_orders_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error reading saved orders from localStorage:', e);
+    }
+    return INITIAL_ORDERS;
+  });
   const [deliveryNotes, setDeliveryNotes] = useState<DeliveryNote[]>(INITIAL_DELIVERY_NOTES);
   const [auditRecords, setAuditRecords] = useState<CrossAuditRecord[]>(INITIAL_CROSS_AUDIT);
   const [customers, setCustomers] = useState<CustomerRecord[]>(INITIAL_CUSTOMERS);
@@ -53,6 +65,15 @@ export default function App() {
   const [topProducts, setTopProducts] = useState<TopProduct[]>(INITIAL_TOP_PRODUCTS);
   const [predictions, setPredictions] = useState<StagePrediction[]>(INITIAL_STAGE_PREDICTIONS);
   const [recommendations, setRecommendations] = useState<ProcurementRecommendation[]>(INITIAL_RECOMMENDATIONS);
+
+  // Lock orders into localStorage on every modification
+  useEffect(() => {
+    try {
+      localStorage.setItem('saban_orders_v2', JSON.stringify(orders));
+    } catch (e) {
+      console.warn('Error saving orders to localStorage:', e);
+    }
+  }, [orders]);
 
   // Sync and Auth states
   const [isSyncing, setIsSyncing] = useState(false);
@@ -96,7 +117,39 @@ export default function App() {
     try {
       const fullData = await GoogleSheetsService.syncAllTabs(config.spreadsheetId);
 
-      setOrders(fullData.orders);
+      setOrders((prevLocalOrders) => {
+        if (fullData.orders.length === 0) return prevLocalOrders;
+
+        const localMap = new Map<string, Order>();
+        prevLocalOrders.forEach((o) => localMap.set(o.orderNumber, o));
+
+        const merged = fullData.orders.map((sheetOrder) => {
+          const local = localMap.get(sheetOrder.orderNumber);
+          if (!local) return sheetOrder;
+
+          // If sheet has a status, use it; if sheet has default but local was updated, keep local locked status
+          const status = (sheetOrder.status && sheetOrder.status !== 'בסידור עבודה')
+            ? sheetOrder.status
+            : (local.status || sheetOrder.status);
+
+          return {
+            ...sheetOrder,
+            status,
+            deliveryDate: sheetOrder.deliveryDate || local.deliveryDate,
+            deliveryTime: sheetOrder.deliveryTime || local.deliveryTime,
+            driver: sheetOrder.driver || local.driver,
+            truck: sheetOrder.truck || local.truck,
+            hasDeliveryNote: sheetOrder.hasDeliveryNote || local.hasDeliveryNote
+          };
+        });
+
+        // Retain any locally added orders not yet in sheet
+        const sheetOrderNumbers = new Set(fullData.orders.map((o) => o.orderNumber));
+        const missingFromSheet = prevLocalOrders.filter((o) => !sheetOrderNumbers.has(o.orderNumber));
+
+        return [...missingFromSheet, ...merged];
+      });
+
       setDeliveryNotes(fullData.deliveryNotes);
       setAuditRecords(fullData.auditRecords);
       setCustomers(fullData.customers);
@@ -280,10 +333,124 @@ export default function App() {
     if (auth.isAuthenticated) {
       try {
         await GoogleSheetsService.writeOrderToSheet(config.spreadsheetId, newOrder, config.dispatchPhone);
-        showToast(`הזמנה #${newOrder.orderNumber} הוזרקה לטאב "הזמנות" ו-"דשבורד_לקוחות"!`);
+        await GoogleSheetsService.syncOrdersDashboardTab(config.spreadsheetId, [newOrder, ...orders]);
+        showToast(`הזמנה #${newOrder.orderNumber} הוזרקה לטאב "הזמנות" ו-"דשבורד_הזמנות"!`);
       } catch (err: any) {
         console.warn('Silent sheet append error:', err);
       }
+    }
+  };
+
+  // 4b. Update Order (Edit Card)
+  const handleUpdateOrder = async (updatedOrder: Order) => {
+    let nextOrders: Order[] = [];
+    setOrders((prev) => {
+      nextOrders = prev.map((o) => (o.orderNumber === updatedOrder.orderNumber ? updatedOrder : o));
+      return nextOrders;
+    });
+
+    // Update audit record if exists
+    setAuditRecords((prev) =>
+      prev.map((r) =>
+        r.orderNumber === updatedOrder.orderNumber
+          ? {
+              ...r,
+              customerInfo: `${updatedOrder.customerName} (${updatedOrder.customerNumber})`,
+              orderedItemsSummary: updatedOrder.itemsText.replace(/\n/g, ' | '),
+              depositsSummary: `${updatedOrder.blowDeposit} | ${updatedOrder.palletDeposit}`
+            }
+          : r
+      )
+    );
+
+    showToast(`כרטיס הזמנה #${updatedOrder.orderNumber} עודכן בהצלחה!`);
+
+    // Real-time online sync to Google Sheets
+    if (auth.isAuthenticated) {
+      try {
+        await GoogleSheetsService.updateOrderInSheet(config.spreadsheetId, updatedOrder, config.dispatchPhone);
+        await GoogleSheetsService.syncOrdersDashboardTab(config.spreadsheetId, nextOrders.length > 0 ? nextOrders : orders);
+        showToast(`כרטיס #${updatedOrder.orderNumber} סונכרן אונליין בטאב "הזמנות" ו-"דשבורד_הזמנות" ב-Sheets!`);
+      } catch (err: any) {
+        showToast(`שגיאה בעדכון ב-Sheets: ${err.message}`, 'error');
+      }
+    }
+  };
+
+  // 4c. Real-time Status Change Handler
+  const handleUpdateOrderStatus = async (orderNumber: string, newStatus: string) => {
+    let targetOrder: Order | undefined;
+    let nextOrders: Order[] = [];
+
+    setOrders((prev) => {
+      nextOrders = prev.map((o) => {
+        if (o.orderNumber === orderNumber) {
+          targetOrder = {
+            ...o,
+            status: newStatus,
+            hasDeliveryNote: newStatus === 'סופק במלואו' ? true : o.hasDeliveryNote
+          };
+          return targetOrder;
+        }
+        return o;
+      });
+      return nextOrders;
+    });
+
+    // Update Cross Audit
+    setAuditRecords((prev) =>
+      prev.map((r) =>
+        r.orderNumber === orderNumber
+          ? {
+              ...r,
+              auditStatus:
+                newStatus === 'סופק במלואו'
+                  ? '✅ אספקה מאומתת מלאה'
+                  : newStatus === 'אספקה חלקית'
+                  ? '⚠️ אי התאמה / חוסר'
+                  : `⏳ ${newStatus}`
+            }
+          : r
+      )
+    );
+
+    showToast(`סטטוס הזמנה #${orderNumber} עודכן ל-"${newStatus}"`);
+
+    // Real-time online listener sync to Google Sheets
+    if (auth.isAuthenticated) {
+      try {
+        await GoogleSheetsService.updateOrderStatusInSheet(
+          config.spreadsheetId,
+          orderNumber,
+          newStatus,
+          targetOrder,
+          config.dispatchPhone
+        );
+        await GoogleSheetsService.syncOrdersDashboardTab(
+          config.spreadsheetId,
+          nextOrders.length > 0 ? nextOrders : orders
+        );
+        showToast(`סטטוס #${orderNumber} עודכן אונליין ב-Google Sheets (טאב "הזמנות" ו-"דשבורד_הזמנות")!`);
+      } catch (err: any) {
+        console.warn('Online status sync error:', err);
+      }
+    }
+  };
+
+  // 4d. Manual Dashboard Tab Refresh
+  const handleSyncOrdersDashboard = async () => {
+    if (!auth.isAuthenticated) {
+      showToast('יש להתחבר ל-Google כדי לעדכן את הגיליון', 'info');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await GoogleSheetsService.syncOrdersDashboardTab(config.spreadsheetId, orders);
+      showToast('טאב "דשבורד_הזמנות" עודכן ועוצב בהצלחה ב-Google Sheets!');
+    } catch (err: any) {
+      showToast(`שגיאה בעדכון דשבורד הזמנות: ${err.message}`, 'error');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -525,7 +692,20 @@ export default function App() {
             config={config}
             isAuthenticated={auth.isAuthenticated}
             onAddOrder={handleAddOrder}
+            onUpdateOrder={handleUpdateOrder}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
             onSyncOrderToSheet={handleSyncOrderToSheet}
+            onSyncOrdersDashboard={handleSyncOrdersDashboard}
+            isSyncingDashboard={isSyncing}
+          />
+        )}
+
+        {activeTab === 'morning_report' && (
+          <MorningReportGenerator
+            orders={orders}
+            config={config}
+            isAuthenticated={auth.isAuthenticated}
+            onRefreshData={() => handleSyncAll(false)}
           />
         )}
 

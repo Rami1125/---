@@ -13,6 +13,7 @@ import {
 
 export type TabType =
   | 'orders'
+  | 'morning_report'
   | 'delivery_notes'
   | 'cross_audit'
   | 'customers'
@@ -43,6 +44,13 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: ClipboardList,
       badge: ordersCount > 0 ? ordersCount : undefined,
       badgeColor: 'bg-emerald-100 text-emerald-800'
+    },
+    {
+      id: 'morning_report' as TabType,
+      label: 'מחולל דוח בוקר 🚀',
+      icon: Sparkles,
+      badge: 'חדש',
+      badgeColor: 'bg-indigo-100 text-indigo-800 font-bold'
     },
     {
       id: 'delivery_notes' as TabType,

@@ -27,19 +27,23 @@ export class WhatsAppAutomationService {
     const wazeLink = `https://www.waze.com/ul?q=${encodeURIComponent(order.deliveryAddress || config.baseLocation)}&navigate=yes`;
     const driver = order.driver || config.defaultDriver;
     const truck = order.truck || config.defaultTruck;
+    const deliverySchedule = order.deliveryDate
+      ? `🚨 *מועד אספקה מתוכנן:* ${order.deliveryDate} ${order.deliveryTime ? 'בשעה ' + order.deliveryTime : ''}\n`
+      : '';
 
     return (
       `📦 *${order.orderNumber}* - *${order.customerName} (${order.customerNumber})*\n\n` +
-      `✨ *הזמנה חדשה בסידור עבודה - SabanOS* ✨\n\n` +
+      `✨ *הזמנה בסידור עבודה - SabanOS* ✨\n\n` +
       `👤 *לקוח:* ${order.customerName} (ח.פ/קוד: ${order.customerNumber})\n` +
       `🏢 *מחסן יוצא:* ${order.warehouse}\n` +
       `📍 *כתובת אספקה:* ${order.deliveryAddress}\n` +
       `🧾 *מספר הזמנה:* ${order.orderNumber}\n` +
-      `📅 *תאריך ושעה:* ${order.timestamp || new Date().toISOString().substring(0, 16)}\n\n` +
+      `${deliverySchedule}` +
+      `📅 *תאריך קליטה:* ${order.timestamp || new Date().toISOString().substring(0, 16)}\n\n` +
       `👋 *שיבוץ נהג ומשאית:*\n` +
-      `🚚 *נהג:* ${driver} | *משאית:* ${truck}\n` +
-      `⏱️ *מרחק וזמן:* ${order.distance || 'לפי מסלול'} | ${order.duration || 'לפי תנועה'}\n` +
-      `🧭 *ניווט Waze ישיר:* ${wazeLink}\n\n` +
+      `🚚 *נהג משובץ:* ${driver} | *משאית:* ${truck}\n` +
+      `⏱️ *מרחק וזמן משוער:* ${order.distance || 'לפי מסלול'} | ${order.duration || 'לפי תנועה'}\n` +
+      `🧭 *ניווט Waze ישיר לאתר:* ${wazeLink}\n\n` +
       `🛒 *רשימת פריטים ומק"טים:*\n${order.itemsText}\n\n` +
       `🛡️ *אימות פקדונות:*\n` +
       `- *בלות:* ${order.blowDeposit || '0'}\n` +

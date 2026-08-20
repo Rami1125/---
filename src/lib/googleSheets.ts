@@ -89,7 +89,7 @@ export class GoogleSheetsService {
       for (const tab of missing) {
         if (tab === 'הזמנות') {
           await this.appendRow(spreadsheetId, 'הזמנות', [
-            'תאריך קליטה', 'מספר הזמנה', 'מספר לקוח', 'שם לקוח', 'מחסן', 'כתובת אספקה', 'פירוט מוצרים וכמויות', 'פקדון בלות', 'פקדון משטחים', 'נהג משוייך', 'תיק לקוח ב-Drive', 'קישור Waze', 'שיתוף WhatsApp', 'קיימת תעודת משלוח?'
+            'תאריך קליטה', 'מספר הזמנה', 'מספר לקוח', 'שם לקוח', 'מחסן', 'כתובת אספקה', 'פירוט מוצרים וכמויות', 'פקדון בלות', 'פקדון משטחים', 'נהג משוייך', 'תיק לקוח ב-Drive', 'קישור Waze', 'שיתוף WhatsApp', 'קיימת תעודת משלוח?', 'סטטוס אספקה', 'תאריך יעד אספקה', 'שעת יעד אספקה', 'רכב משאית'
           ]);
         } else if (tab === 'תעודות_משלוח') {
           await this.appendRow(spreadsheetId, 'תעודות_משלוח', [
@@ -180,6 +180,11 @@ export class GoogleSheetsService {
       const hasDeliveryNoteRaw = String(r[13] || '').trim();
 
       const hasNote = hasDeliveryNoteRaw.includes('כן') || hasDeliveryNoteRaw.includes('✅') || hasDeliveryNoteRaw === 'true';
+      const parsedStatus = String(r[14] || '').trim();
+      const status = parsedStatus || (hasNote ? 'סופק במלואו' : 'בסידור עבודה');
+      const deliveryDate = String(r[15] || '').trim();
+      const deliveryTime = String(r[16] || '').trim();
+      const truck = String(r[17] || '').trim();
 
       orders.push({
         id: `ord-gs-${i}-${orderNumber}`,
@@ -197,7 +202,10 @@ export class GoogleSheetsService {
         wazeLink,
         waShareLink,
         hasDeliveryNote: hasNote,
-        status: hasNote ? 'סופק במלואו' : 'בסידור עבודה',
+        status: status,
+        deliveryDate: deliveryDate || undefined,
+        deliveryTime: deliveryTime || undefined,
+        truck: truck || undefined,
         distance: '15 ק"מ',
         duration: 'כ-20 דקות'
       });
@@ -496,7 +504,11 @@ export class GoogleSheetsService {
       order.customerFolderUrl ? `=HYPERLINK("${order.customerFolderUrl}", "📁 תיק לקוח")` : '—',
       `=HYPERLINK("${wazeLink}", "🧭 Waze")`,
       `=HYPERLINK("${waShareLink}", "📲 שגר וואטסאפ")`,
-      order.hasDeliveryNote ? '✅ כן' : '⏳ טרם'
+      order.hasDeliveryNote ? '✅ כן' : '⏳ טרם',
+      order.status || 'בסידור עבודה',
+      order.deliveryDate || '',
+      order.deliveryTime || '',
+      order.truck || ''
     ];
 
     await this.appendRow(spreadsheetId, 'הזמנות', rowOrders);
@@ -512,7 +524,7 @@ export class GoogleSheetsService {
         order.blowDeposit,
         order.palletDeposit,
         order.customerFolderUrl ? `=HYPERLINK("${order.customerFolderUrl}", "📁 תיק לקוח")` : '—',
-        '',
+        order.status || 'בסידור עבודה',
         order.deliveryAddress,
         order.warehouse
       ];
@@ -520,6 +532,208 @@ export class GoogleSheetsService {
     } catch (e) {
       console.warn('Could not write to דשבורד_לקוחות:', e);
     }
+  }
+
+  /**
+   * Update full Order in Google Sheets (טאב: הזמנות) in real-time
+   */
+  static async updateOrderInSheet(spreadsheetId: string, order: Order, dispatchPhone: string) {
+    const rows = await this.getSheetValues(spreadsheetId, 'הזמנות');
+    let targetRowIndex = -1;
+
+    for (let r = 1; r < rows.length; r++) {
+      if (String(rows[r][1] || '').trim() === String(order.orderNumber).trim()) {
+        targetRowIndex = r + 1; // 1-indexed
+        break;
+      }
+    }
+
+    const wazeLink = `https://www.waze.com/ul?q=${encodeURIComponent(order.deliveryAddress)}&navigate=yes`;
+    const waShareLink = `https://api.whatsapp.com/send?phone=972${dispatchPhone.replace(/[^\d]/g, '').replace(/^0/, '')}&text=${encodeURIComponent('📦 הזמנה ' + order.orderNumber + ' עבור ' + order.customerName)}`;
+
+    const updatedRow = [
+      order.timestamp,
+      order.orderNumber,
+      order.customerNumber,
+      order.customerName,
+      order.warehouse,
+      order.deliveryAddress,
+      order.itemsText,
+      order.blowDeposit,
+      order.palletDeposit,
+      order.driver || 'חכמת/עלי',
+      order.customerFolderUrl ? `=HYPERLINK("${order.customerFolderUrl}", "📁 תיק לקוח")` : (rows[targetRowIndex - 1]?.[10] || '—'),
+      `=HYPERLINK("${wazeLink}", "🧭 Waze")`,
+      `=HYPERLINK("${waShareLink}", "📲 שגר וואטסאפ")`,
+      order.hasDeliveryNote ? '✅ כן' : '⏳ טרם',
+      order.status || 'בסידור עבודה',
+      order.deliveryDate || '',
+      order.deliveryTime || '',
+      order.truck || ''
+    ];
+
+    if (targetRowIndex > 0) {
+      const range = `הזמנות!A${targetRowIndex}:R${targetRowIndex}`;
+      await this.fetchWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        body: JSON.stringify({ values: [updatedRow] })
+      });
+    } else {
+      await this.appendRow(spreadsheetId, 'הזמנות', updatedRow);
+    }
+  }
+
+  /**
+   * Online listener & status updater in Google Sheets in real-time
+   */
+  static async updateOrderStatusInSheet(
+    spreadsheetId: string,
+    orderNumber: string,
+    newStatus: string,
+    order?: Order,
+    dispatchPhone: string = '0528616198'
+  ) {
+    const rows = await this.getSheetValues(spreadsheetId, 'הזמנות');
+    let targetRowIndex = -1;
+
+    for (let r = 1; r < rows.length; r++) {
+      if (String(rows[r][1] || '').trim() === String(orderNumber).trim()) {
+        targetRowIndex = r + 1;
+        break;
+      }
+    }
+
+    if (targetRowIndex > 0) {
+      const existingRow = [...(rows[targetRowIndex - 1] || [])];
+      while (existingRow.length < 18) existingRow.push('');
+      // Column 13 is hasDeliveryNote, Column 14 (O) is status
+      const hasNote = newStatus === 'סופק במלואו' ? '✅ כן' : (existingRow[13] || '⏳ טרם');
+      existingRow[13] = hasNote;
+      existingRow[14] = newStatus;
+      if (order?.deliveryDate) existingRow[15] = order.deliveryDate;
+      if (order?.deliveryTime) existingRow[16] = order.deliveryTime;
+      if (order?.truck) existingRow[17] = order.truck;
+      if (order?.driver) existingRow[9] = order.driver;
+
+      const range = `הזמנות!A${targetRowIndex}:R${targetRowIndex}`;
+      await this.fetchWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        body: JSON.stringify({ values: [existingRow] })
+      });
+    } else if (order) {
+      const updatedOrder = { ...order, status: newStatus };
+      await this.updateOrderInSheet(spreadsheetId, updatedOrder, dispatchPhone);
+    }
+
+    // Also update דשבורד_לקוחות if present
+    try {
+      const customerDashRows = await this.getSheetValues(spreadsheetId, 'דשבורד_לקוחות');
+      let dashRowIndex = -1;
+      for (let r = 1; r < customerDashRows.length; r++) {
+        if (String(customerDashRows[r][1] || '').trim() === String(orderNumber).trim()) {
+          dashRowIndex = r + 1;
+          break;
+        }
+      }
+      if (dashRowIndex > 0) {
+        const dashRange = `דשבורד_לקוחות!I${dashRowIndex}`;
+        await this.fetchWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(dashRange)}?valueInputOption=USER_ENTERED`, {
+          method: 'PUT',
+          body: JSON.stringify({ values: [[newStatus]] })
+        });
+      }
+    } catch (e) {
+      console.warn('Customer dash status sync notice:', e);
+    }
+
+    // Also update הצלבה_ובקרה if relevant
+    try {
+      const auditRows = await this.getSheetValues(spreadsheetId, 'הצלבה_ובקרה');
+      let auditRowIndex = -1;
+      for (let r = 1; r < auditRows.length; r++) {
+        if (String(auditRows[r][0] || '').trim() === String(orderNumber).trim()) {
+          auditRowIndex = r + 1;
+          break;
+        }
+      }
+      if (auditRowIndex > 0) {
+        const auditRange = `הצלבה_ובקרה!D${auditRowIndex}`;
+        await this.fetchWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(auditRange)}?valueInputOption=USER_ENTERED`, {
+          method: 'PUT',
+          body: JSON.stringify({ values: [[newStatus]] })
+        });
+      }
+    } catch (err) {
+      console.warn('Audit status sync notice:', err);
+    }
+  }
+
+  /**
+   * Refresh & Sync טאב: דשבורד_הזמנות in Google Sheets with summary & daily dispatch
+   */
+  static async syncOrdersDashboardTab(spreadsheetId: string, orders: Order[]) {
+    await this.ensureRequiredTabs(spreadsheetId);
+
+    const totalOrders = orders.length;
+    const inWorkPlan = orders.filter(o => o.status === 'בסידור עבודה').length;
+    const outForDelivery = orders.filter(o => o.status === 'בדרך לאתר' || o.status === 'יצא לחלוקה').length;
+    const fullyDelivered = orders.filter(o => o.status === 'סופק במלואו').length;
+    const awaitingNote = orders.filter(o => o.status === 'ממתין לתעודה').length;
+    const partial = orders.filter(o => o.status === 'אספקה חלקית').length;
+
+    const values: (string | number)[][] = [];
+
+    // Title and Top KPI Summary Block
+    values.push(['🚚 דשבורד ניהול הזמנות, סידור עבודה וסטטוסי אספקה — ח. סבן חומרי בניין']);
+    values.push([`עודכן לאחרונה: ${new Date().toISOString().replace('T', ' ').substring(0, 19)}`]);
+    values.push([]);
+    values.push(['📊 ריכוז סטטוסים יומי', 'סה"כ הזמנות', 'בסידור עבודה', 'בדרך / יצא לחלוקה', 'סופקו במלואו', 'אספקה חלקית', 'ממתין לתעודה חתומה']);
+    values.push(['מדדי ביצוע', totalOrders, inWorkPlan, outForDelivery, fullyDelivered, partial, awaitingNote]);
+    values.push([]);
+
+    // Table Header
+    values.push(['📋 פירוט הזמנות וסידור עבודה']);
+    values.push([
+      'תאריך קליטה',
+      'מספר הזמנה',
+      'מספר לקוח',
+      'שם לקוח / אתר',
+      'מחסן',
+      'כתובת אספקה',
+      'פירוט מוצרים',
+      'פקדון בלות',
+      'פקדון משטחים',
+      'נהג משוייך',
+      'סטטוס אספקה נוכחי',
+      'תעודת משלוח',
+      'ניווט Waze'
+    ]);
+
+    // Rows
+    orders.forEach(o => {
+      const wazeLink = `https://www.waze.com/ul?q=${encodeURIComponent(o.deliveryAddress)}&navigate=yes`;
+      values.push([
+        o.timestamp,
+        o.orderNumber,
+        o.customerNumber,
+        o.customerName,
+        o.warehouse,
+        o.deliveryAddress,
+        o.itemsText.replace(/\n/g, ' | '),
+        o.blowDeposit,
+        o.palletDeposit,
+        o.driver || 'חכמת/עלי',
+        o.status,
+        o.hasDeliveryNote ? '✅ כן' : '⏳ טרם',
+        `=HYPERLINK("${wazeLink}", "🧭 Waze")`
+      ]);
+    });
+
+    const range = `דשבורד_הזמנות!A1`;
+    await this.fetchWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      body: JSON.stringify({ values })
+    });
   }
 
   /**
