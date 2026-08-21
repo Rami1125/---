@@ -8,11 +8,13 @@ import {
   Truck,
   BookOpen,
   Settings,
-  Sparkles
+  Sparkles,
+  Radio
 } from 'lucide-react';
 
 export type TabType =
   | 'orders'
+  | 'noa_voice'
   | 'morning_report'
   | 'delivery_notes'
   | 'cross_audit'
@@ -44,6 +46,14 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: ClipboardList,
       badge: ordersCount > 0 ? ordersCount : undefined,
       badgeColor: 'bg-emerald-100 text-emerald-800'
+    },
+    {
+      id: 'noa_voice' as TabType,
+      label: 'נועה AI - קול ושידור 🎙️',
+      icon: Radio,
+      badge: 'AI קולי',
+      badgeColor: 'bg-cyan-100 text-cyan-800 font-bold',
+      sparkle: true
     },
     {
       id: 'morning_report' as TabType,

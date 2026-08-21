@@ -3,6 +3,7 @@ import { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { Navigation, TabType } from './components/Navigation';
 import { OrdersView } from './components/OrdersView';
+import { NoaVoiceControlPanel } from './components/NoaVoiceControlPanel';
 import { MorningReportGenerator } from './components/MorningReportGenerator';
 import { DeliveryNotesView } from './components/DeliveryNotesView';
 import { CrossAuditView } from './components/CrossAuditView';
@@ -697,6 +698,13 @@ export default function App() {
             onSyncOrderToSheet={handleSyncOrderToSheet}
             onSyncOrdersDashboard={handleSyncOrdersDashboard}
             isSyncingDashboard={isSyncing}
+          />
+        )}
+
+        {activeTab === 'noa_voice' && (
+          <NoaVoiceControlPanel
+            config={config}
+            onShowToast={showToast}
           />
         )}
 
