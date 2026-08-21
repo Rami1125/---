@@ -35,6 +35,8 @@ import {
 import confetti from 'canvas-confetti';
 import { SystemConfig } from '../types';
 import { MakeWebhookService } from '../lib/makeWebhook';
+import { SabanOrderDispatchCard } from './SabanOrderDispatchCard';
+import { SabanOS_Enhanced_Order_Card } from './SabanOS_Enhanced_Order_Card';
 
 interface NoaVoiceControlPanelProps {
   config: SystemConfig;
@@ -474,34 +476,40 @@ export const NoaVoiceControlPanel: React.FC<NoaVoiceControlPanelProps> = ({
 
             {/* Scenario A: Driver specific details */}
             {activeScenario.id === 'scenario_driver' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-1">
-                  <span className="text-slate-500 font-bold block">הזמנה ולקוח:</span>
-                  <span className="text-slate-200 font-bold text-sm block">
-                    #{activeScenario.orderNumber} | {activeScenario.clientName}
-                  </span>
-                  <span className="text-cyan-400 font-mono block">📍 {activeScenario.destination}</span>
-                </div>
-
-                <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-1">
-                  <span className="text-slate-500 font-bold block">מחסן העמסה:</span>
-                  <span className="text-emerald-400 font-bold text-sm block">מחסן 4 (החרש)</span>
-                  <span className="text-slate-400 block">משאית מנוף חכמת | דורש חתימה</span>
-                </div>
-
-                <div className="sm:col-span-2 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
-                  <span className="text-slate-400 font-bold block mb-1.5">📦 פירוט חומרים לשינוע:</span>
-                  <div className="flex flex-wrap gap-2">
-                    {activeScenario.materialsList?.map((m, i) => (
-                      <span
-                        key={i}
-                        className="bg-cyan-950/60 text-cyan-200 text-xs px-2.5 py-1 rounded-xl border border-cyan-800/60 font-medium"
-                      >
-                        ✓ {m}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+              <div className="space-y-4">
+                <SabanOS_Enhanced_Order_Card
+                  order={{
+                    orderId: activeScenario.orderNumber || '6214860',
+                    customerName: activeScenario.clientName || 'נתנאל מגד',
+                    address: activeScenario.destination || 'י.ל.פרץ 4, הרצליה',
+                    status: '⏳ ממתין לשיגור',
+                    driverName: 'חכמת (משאית מנוף 🏗️)',
+                    driverPhone: activeScenario.targetPhone || config.dispatchPhone || '+972501234567',
+                    driverType: 'חכמת',
+                    warehouse: 'החרש',
+                    warehouseGps: '32.1645° N, 34.8452° E (החרש 4)',
+                    slaWindow: '08:00 - 10:30',
+                    isSlaRisk: true,
+                    driveFolderUrl: 'https://drive.google.com',
+                    products: [
+                      { name: 'סומסום 1 קוב נקי', quantity: '4', unit: 'בלות', weightKg: 2800, iconType: 'sand' },
+                      { name: 'מלט פורטלנד אפור', quantity: '20', unit: 'שקים 25 ק"ג', weightKg: 500, iconType: 'cement' }
+                    ],
+                    totalWeightKg: 3300,
+                    spokenScript: currentScriptText
+                  }}
+                  defaultAudioOpen={true}
+                  onDispatchSuccess={(orderId, type) => {
+                    if (onShowToast) {
+                      onShowToast(
+                        type === 'voice'
+                          ? `🎙️ שוגר בהצלחה קטע קול ו-Webhook עבור הזמנה #${orderId} לשרתי Make ו-JONI!`
+                          : `📲 שוגר בהצלחה סיכום טקסט בוואטסאפ להזמנה #${orderId}!`,
+                        'success'
+                      );
+                    }
+                  }}
+                />
               </div>
             )}
 

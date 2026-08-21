@@ -36,12 +36,16 @@ import {
   AlertCircle,
   TrendingUp,
   SlidersHorizontal,
-  ChevronUp
+  ChevronUp,
+  Volume2,
+  Radio
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, SystemConfig } from '../types';
 import { MakeWebhookService } from '../lib/makeWebhook';
 import { WhatsAppAutomationService, WhatsAppSummaryResult } from '../lib/whatsappAutomation';
+import { SabanOrderDispatchCard, SabanOrder } from './SabanOrderDispatchCard';
+import { SabanOS_Enhanced_Order_Card, SabanOrderEnhanced, SabanProductItem } from './SabanOS_Enhanced_Order_Card';
 
 export const AVAILABLE_STATUSES = [
   { id: 'בסידור עבודה', label: 'בסידור עבודה', color: 'bg-amber-500/10 text-amber-900 border-amber-300 dark:border-amber-700/40' },
@@ -109,6 +113,120 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [copiedNotification, setCopiedNotification] = useState(false);
+
+  // Voice Dispatch Tool States (SabanOS Voice & Webhook)
+  const [activeVoiceDispatchOrder, setActiveVoiceDispatchOrder] = useState<Order | null>(null);
+  const [expandedVoiceOrderNumbers, setExpandedVoiceOrderNumbers] = useState<string[]>([]);
+
+  const toggleExpandVoiceOrder = (orderNum: string) => {
+    setExpandedVoiceOrderNumbers(prev =>
+      prev.includes(orderNum) ? prev.filter(id => id !== orderNum) : [...prev, orderNum]
+    );
+  };
+
+  const convertOrderToEnhancedSabanOrder = (ord: Order): SabanOrderEnhanced => {
+    const rawLines = ord.itemsText
+      ? ord.itemsText
+          .split('\n')
+          .map(line =>
+            line
+              .replace(/^\d+\.\s*📦?\s*/, '')
+              .replace(/^מק"ט:\s*\d+\s*\|\s*/, '')
+              .replace(/^•\s*/, '')
+              .trim()
+          )
+          .filter(line => line.length > 0)
+      : ['פריטי הזמנה כלליים'];
+
+    const products: SabanProductItem[] = rawLines.map((line, idx) => {
+      let iconType: 'sand' | 'cement' | 'blocks' | 'plaster' | 'general' = 'general';
+      let weightKg = 350;
+
+      if (line.includes('חול') || line.includes('סומסום') || line.includes('מחלוטה') || line.includes('טוף') || line.includes('בלה')) {
+        iconType = 'sand';
+        weightKg = 700;
+      } else if (line.includes('מלט') || line.includes('שק') || line.includes('טיח') || line.includes('דבק')) {
+        iconType = 'cement';
+        weightKg = 25;
+      } else if (line.includes('בלוק') || line.includes('איטונג')) {
+        iconType = 'blocks';
+        weightKg = 1200;
+      }
+
+      return {
+        id: `p-${idx}`,
+        name: line,
+        quantity: line.match(/\d+/)?.[0] || '1',
+        unit: line.includes('בלה') || line.includes('בלות') ? 'בלות' : line.includes('שק') ? 'שקים' : 'יח׳',
+        weightKg,
+        iconType
+      };
+    });
+
+    const driverDisplay = ord.driver || config.defaultDriver || 'חכמת (משאית מנוף 🏗️)';
+    const cleanDriverFirstName = driverDisplay.split(' ')[0].replace(/[\/()]/g, '');
+    const isHachmat = driverDisplay.includes('חכמת');
+    const isAli = driverDisplay.includes('עלי');
+    const driverType = isHachmat ? 'חכמת' : isAli ? 'עלי' : 'חכמת';
+
+    const warehouseName = ord.warehouse?.includes('תלמיד') ? 'התלמיד' : 'החרש';
+    const warehouseGps = warehouseName === 'החרש' ? '32.1645° N, 34.8452° E (החרש 4)' : '32.1720° N, 34.8510° E (התלמיד)';
+
+    const spokenScript = `היי ${cleanDriverFirstName}, כאן נועה. סידור העבודה הבא שלך מוכן במחסן ${warehouseName} להזמנה ${ord.orderNumber} עבור ${ord.customerName} ברחוב ${ord.deliveryAddress}. סע בזהירות!`;
+
+    const totalWeightKg = products.reduce((acc, p) => acc + (p.weightKg || 300) * (parseInt(String(p.quantity)) || 1), 0);
+
+    return {
+      orderId: ord.orderNumber,
+      customerName: ord.customerName,
+      address: ord.deliveryAddress,
+      status: ord.status || '⏳ ממתין לשיגור',
+      driverName: driverDisplay,
+      driverPhone: config.dispatchPhone || '+972509620049',
+      driverType,
+      warehouse: warehouseName,
+      warehouseGps,
+      slaWindow: ord.deliveryTime || '08:00 - 10:30',
+      isSlaRisk: ord.status === 'בסידור עבודה' || Boolean(ord.blowDeposit && parseFloat(ord.blowDeposit) > 4),
+      driveFolderUrl: ord.customerFolderUrl || 'https://drive.google.com',
+      products,
+      totalWeightKg: totalWeightKg > 0 ? totalWeightKg : 3300,
+      spokenScript
+    };
+  };
+
+  const convertOrderToSabanOrder = (ord: Order): SabanOrder => {
+    const materials = ord.itemsText
+      ? ord.itemsText
+          .split('\n')
+          .map(line =>
+            line
+              .replace(/^\d+\.\s*📦?\s*/, '')
+              .replace(/^מק"ט:\s*\d+\s*\|\s*/, '')
+              .replace(/^•\s*/, '')
+              .trim()
+          )
+          .filter(line => line.length > 0)
+      : ['פריטי הזמנה כלליים'];
+
+    const driverDisplay = ord.driver || config.defaultDriver || 'חכמת (משאית מנוף 🏗️)';
+    const cleanDriverFirstName = driverDisplay.split(' ')[0].replace(/[\/()]/g, '');
+    const spokenScript = `היי ${cleanDriverFirstName}, כאן נועה. סידור העבודה הבא שלך מוכן במחסן ${ord.warehouse || 'החרש'} להזמנה ${ord.orderNumber} עבור ${ord.customerName} ברחוב ${ord.deliveryAddress}. סע בזהירות!`;
+
+    return {
+      orderId: ord.orderNumber,
+      customerName: ord.customerName,
+      address: ord.deliveryAddress,
+      status: ord.status || '⏳ ממתין לשיגור',
+      driverName: driverDisplay,
+      driverPhone: config.dispatchPhone || '050-9620049',
+      warehouse: ord.warehouse?.includes('חרש') ? 'מחסן 4 (החרש)' : `מחסן ${ord.warehouse}`,
+      materials: materials.length > 0 ? materials : ['חומרי בניין לפי תעודה'],
+      spokenScript: spokenScript,
+      weightTon: ord.blowDeposit ? Math.round((parseFloat(ord.blowDeposit) * 0.8 + 1.2) * 10) / 10 : 3.2,
+      deliveryTimeWindow: ord.deliveryTime || '08:30 - 10:00'
+    };
+  };
 
   // WhatsApp Preview / Click-to-Chat / Webhook Modal
   const [whatsappModal, setWhatsappModal] = useState<{
@@ -963,6 +1081,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     </button>
                   )}
 
+                  {/* 🔊 Glowing Speaker Button for Noa AI Voice Dispatch */}
+                  <button
+                    id={`btn-voice-speaker-${order.orderNumber}`}
+                    type="button"
+                    onClick={() => toggleExpandVoiceOrder(order.orderNumber)}
+                    className={`w-8.5 h-8.5 rounded-xl flex items-center justify-center transition-all cursor-pointer border shrink-0 ${
+                      expandedVoiceOrderNumbers.includes(order.orderNumber)
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.6)] scale-105'
+                        : 'bg-cyan-950/80 text-cyan-300 border-cyan-500/50 hover:bg-cyan-900/90 hover:border-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.25)] hover:scale-105'
+                    }`}
+                    title="נועה AI - נגן קולי, תמלול ושידור Webhook (🔊)"
+                  >
+                    <span className="text-sm">🔊</span>
+                  </button>
+
                   <button
                     onClick={() => handleSendJoniWhatsApp(order)}
                     disabled={isSendingWhatsApp === order.orderNumber}
@@ -973,6 +1106,38 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Collapsible SabanOS Voice Dispatch Card inside Order Card */}
+              {expandedVoiceOrderNumbers.includes(order.orderNumber) && (
+                <div className="mt-4 pt-4 border-t border-slate-200 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="mb-2 flex items-center justify-between text-xs px-1">
+                    <span className="font-bold text-cyan-800 flex items-center gap-1.5">
+                      <Radio className="w-3.5 h-3.5 text-cyan-600 animate-pulse" />
+                      <span>כלי שידור קולי - SabanOS Voice & Webhook</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandVoiceOrder(order.orderNumber)}
+                      className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+                    >
+                      סגור ✕
+                    </button>
+                  </div>
+                  <SabanOS_Enhanced_Order_Card
+                    order={convertOrderToEnhancedSabanOrder(order)}
+                    defaultAudioOpen={true}
+                    onClose={() => toggleExpandVoiceOrder(order.orderNumber)}
+                    onDispatchSuccess={(orderId, type) => {
+                      if (onUpdateOrderStatus) {
+                        onUpdateOrderStatus(
+                          orderId,
+                          type === 'voice' ? '✅ שוגר קולית לנהג' : '✅ שוגר טקסט בוואטסאפ'
+                        );
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -997,6 +1162,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               הצג {hiddenClosedCount} הזמנות שהושלמו
             </button>
           )}
+        </div>
+      )}
+
+      {/* Standalone Voice Dispatch Focus Modal */}
+      {activeVoiceDispatchOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative max-w-2xl w-full max-h-[95vh] overflow-y-auto">
+            <SabanOS_Enhanced_Order_Card
+              order={convertOrderToEnhancedSabanOrder(activeVoiceDispatchOrder)}
+              defaultAudioOpen={true}
+              onClose={() => setActiveVoiceDispatchOrder(null)}
+              onDispatchSuccess={(orderId, type) => {
+                if (onUpdateOrderStatus) {
+                  onUpdateOrderStatus(
+                    orderId,
+                    type === 'voice' ? '✅ שוגר קולית לנהג' : '✅ שוגר טקסט בוואטסאפ'
+                  );
+                }
+              }}
+            />
+          </div>
         </div>
       )}
 
