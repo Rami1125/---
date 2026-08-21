@@ -158,23 +158,28 @@ export const SabanOS_Enhanced_Order_Card: React.FC<SabanOSEnhancedOrderCardProps
   const handleSendWhatsAppText = () => {
     setIsSendingText(true);
     const materialsSummary = order.products
-      .map((p) => `• ${p.quantity} ${p.unit} - ${p.name} (${p.weightKg ? `${p.weightKg} ק"ג` : ''})`)
+      .map((p) => {
+        const emoji = p.iconType === 'sand' ? '🏖️' : p.iconType === 'cement' ? '🧱' : p.iconType === 'blocks' ? '🏗️' : '📦';
+        return `• ${emoji} *${p.quantity} ${p.unit}* - ${p.name}${p.weightKg ? ` _(${p.weightKg} ק"ג)_` : ''}`;
+      })
       .join('\n');
 
+    const audioShortUrl = `https://saban.link/v/${order.orderId}`;
+
     const formattedMessage =
-      `🚚 *סידור עבודה חדש - ח. סבן בע"מ*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 *הזמנה:* #${order.orderId}\n` +
-      `👤 *לקוח:* ${order.customerName}\n` +
-      `📍 *כתובת אספקה:* ${order.address}\n` +
-      `🏢 *מחסן מוצא:* מחסן ${order.warehouse}\n` +
-      `⏱️ *חלון שעות SLA:* ${order.slaWindow}\n` +
-      `👷 *נהג:* ${order.driverName}\n` +
-      `⚖️ *משקל כולל:* ${(order.totalWeightKg / 1000).toFixed(2)} טון\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📦 *פירוט מוצרים:*\n${materialsSummary}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⏰ שעת שיגור: ${new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`;
+      `👷‍♂️ היי *${order.driverName.split(' ')[0]}*,\n` +
+      `סידור העבודה שלך מוכן ליציאה.\n\n` +
+      `📦 *פרטי ההזמנה:*\n` +
+      `• הזמנה: *#${order.orderId}*\n` +
+      `• לקוח: *${order.customerName}*\n` +
+      `• כתובת: *${order.address}*\n` +
+      `• איסוף מ: *מחסן ${order.warehouse}*\n` +
+      `• חלון אספקה: *${order.slaWindow}*\n` +
+      `• משקל כולל: *${(order.totalWeightKg / 1000).toFixed(2)} טון* ⚖️\n\n` +
+      `📋 *תכולת הסחורה:*\n${materialsSummary}\n\n` +
+      `🎧 *מעדיף להאזין?* לחץ כאן לשמיעת התדריך הקולי:\n${audioShortUrl}\n\n` +
+      `סע בזהירות! 🚛\n` +
+      `_באדיבות נועה AI_ 🤖`;
 
     setTimeout(() => {
       setIsSendingText(false);
@@ -299,16 +304,20 @@ export const SabanOS_Enhanced_Order_Card: React.FC<SabanOSEnhancedOrderCardProps
       setVoiceDispatchStatusText('✅ שוגר קולית בהצלחה!');
       setCurrentStatus('✅ שוגר קולית לנהג');
 
-      // WhatsApp Voice Dispatch Companion Link
+      // WhatsApp Voice Dispatch Companion Link with matching emojis & shortened link
+      const audioShortUrl = `https://saban.link/v/${order.orderId}`;
       const voiceWaMessage =
-        `🎙️ *תדריך קולי נשלח מנועה AI (SabanOS)*\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `📋 *הזמנה:* #${order.orderId} | *לקוח:* ${order.customerName}\n` +
-        `📍 *יעד:* ${order.address}\n` +
-        `🗣️ *תמלול הודעה:*\n"${scriptText}"\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🎧 *קובץ שמע:* voice_dispatch_${order.orderId}.ogg (Opus HD)\n` +
-        `📡 שודר בהצלחה לשרתי Make ו-JONI`;
+        `👷‍♂️ היי *${order.driverName.split(' ')[0]}*,\n` +
+        `נועה AI הכינה עבורך תדריך קולי לסידור העבודה.\n\n` +
+        `📦 *פרטי ההזמנה:*\n` +
+        `• הזמנה: *#${order.orderId}*\n` +
+        `• לקוח: *${order.customerName}*\n` +
+        `• כתובת: *${order.address}*\n` +
+        `• מחסן יציאה: *מחסן ${order.warehouse}*\n\n` +
+        `🗣️ *תמלול התדריך:*\n"${scriptText}"\n\n` +
+        `🎧 *שמיעת התדריך בקול של נועה (אודיו HD):*\n${audioShortUrl}\n\n` +
+        `סע בזהירות! 🚛\n` +
+        `_באדיבות נועה AI_ 🤖`;
 
       const cleanPhone = (order.driverPhone || '0509620049').replace(/\D/g, '');
       const waPhone = cleanPhone.startsWith('0') ? '972' + cleanPhone.slice(1) : cleanPhone;
