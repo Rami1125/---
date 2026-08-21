@@ -752,6 +752,8 @@ export default function App() {
             topProducts={topProducts}
             predictions={predictions}
             recommendations={recommendations}
+            orders={orders}
+            customers={customers}
             isAuthenticated={auth.isAuthenticated}
             onSyncDashboardToSheet={handleSyncDashboardToSheet}
             isSyncing={isSyncing}
