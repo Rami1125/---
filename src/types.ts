@@ -108,6 +108,8 @@ export interface LogisticsDictionaryItem {
   requiresDrumDeposit: string; // דורש פקדון חבית?
   requiresBlockPalletDeposit: string; // דורש פקדון משטח בלוק?
   noaConclusions: string; // מסקנות וחישוב נועה
+  keywords?: string;
+  customerHistory?: string[];
 }
 
 // 5. טאב: דשבורד_לקוחות
