@@ -13,6 +13,11 @@ import { LogisticsView } from './components/LogisticsView';
 import { LogisticsDictionaryView } from './components/LogisticsDictionaryView';
 import { SettingsView } from './components/SettingsView';
 import { ConfirmModal } from './components/ConfirmModal';
+import { DigitalDriverIDModal } from './components/DigitalDriverIDModal';
+import { MobileActionDock } from './components/MobileActionDock';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { useNetworkStatus, OfflineStorageEngine } from './lib/offlineStorage';
+import { generateNoaWhatsAppMessage, generateWhatsAppWebUrl } from './lib/MessageTemplates';
 import {
   GoogleAuthState,
   SystemConfig,
@@ -24,7 +29,8 @@ import {
   TopProduct,
   StagePrediction,
   ProcurementRecommendation,
-  LogisticsDictionaryItem
+  LogisticsDictionaryItem,
+  DriverProfile
 } from './types';
 import {
   DEFAULT_CONFIG,
@@ -44,6 +50,11 @@ import { GoogleSheetsService } from './lib/googleSheets';
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('orders');
   const [config, setConfig] = useState<SystemConfig>(DEFAULT_CONFIG);
+  const [isDriverIDOpen, setIsDriverIDOpen] = useState<boolean>(false);
+  const [selectedDriverForID, setSelectedDriverForID] = useState<string | undefined>(undefined);
+
+  // Network and Offline Storage status
+  const { isOnline, pendingQueueCount } = useNetworkStatus();
 
   // Dynamic live data states with local persistence locking
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -110,6 +121,29 @@ export default function App() {
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setStatusMessage({ text, type });
     setTimeout(() => setStatusMessage(null), 4000);
+  };
+
+  // Quick WhatsApp Launcher for mobile dock
+  const handleQuickWhatsApp = () => {
+    // Find first active order or provide a general broadcast template
+    const activeOrder = orders.find(o => o.status === 'בביצוע' || o.status === 'ממתין לשיבוץ') || orders[0];
+    if (activeOrder) {
+      const msg = generateNoaWhatsAppMessage({
+        driverName: activeOrder.driverName || 'נהג סבן',
+        orderId: activeOrder.orderId,
+        customerName: activeOrder.customerName,
+        address: activeOrder.address,
+        warehouse: activeOrder.warehouse || 'החרש',
+        materials: activeOrder.materialsSummary || 'תערובת טיח, מלט, בלוקים',
+        audioUrl: activeOrder.audioDriveUrl
+      });
+      const url = generateWhatsAppWebUrl(activeOrder.driverPhone || '0501234567', msg);
+      window.open(url, '_blank');
+      showToast(`פותח וואטסאפ עבור הזמנה ${activeOrder.orderId}`);
+    } else {
+      const defaultText = `👷‍♂️ היי צוות ח. סבן,\nשידור עבודה יומי מוכן במערכת SabanOS. סעו בזהירות! 🚛`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(defaultText)}`, '_blank');
+    }
   };
 
   // Full Live Sync across all 9 Tabs
@@ -641,16 +675,25 @@ export default function App() {
   const unverifiedNotesCount = deliveryNotes.filter((n) => !n.auditStatus.includes('מאומתת')).length;
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col font-['Heebo',sans-serif]">
+    <div className="min-h-screen bg-slate-950/5 text-slate-900 flex flex-col font-['Heebo',sans-serif]">
+      {/* PWA Install Banner */}
+      <PWAInstallBanner />
+
       {/* System Header */}
       <Header
         auth={auth}
         config={config}
         isSyncing={isSyncing}
         lastSyncTime={lastSyncTime}
+        isOnline={isOnline}
+        pendingQueueCount={pendingQueueCount}
         onLogin={handleLogin}
         onLogout={handleLogout}
         onSyncAll={() => handleSyncAll(false)}
+        onOpenDriverID={() => {
+          setSelectedDriverForID(undefined);
+          setIsDriverIDOpen(true);
+        }}
       />
 
       {/* Navigation Tabs */}
@@ -664,20 +707,20 @@ export default function App() {
 
       {/* Toast Banner */}
       {statusMessage && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 w-full pt-3">
           <div
-            className={`p-3.5 rounded-2xl text-xs font-bold shadow-xs border animate-in fade-in slide-in-from-top-2 duration-200 flex items-center justify-between ${
+            className={`p-3.5 rounded-2xl text-xs font-bold shadow-md border animate-in fade-in slide-in-from-top-2 duration-200 flex items-center justify-between ${
               statusMessage.type === 'error'
-                ? 'bg-rose-50 text-rose-800 border-rose-200'
+                ? 'bg-rose-900/90 text-rose-100 border-rose-700'
                 : statusMessage.type === 'info'
-                ? 'bg-blue-50 text-blue-800 border-blue-200'
-                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                ? 'bg-blue-900/90 text-blue-100 border-blue-700'
+                : 'bg-emerald-900/90 text-emerald-100 border-emerald-700'
             }`}
           >
             <span>{statusMessage.text}</span>
             <button
               onClick={() => setStatusMessage(null)}
-              className="text-slate-400 hover:text-slate-700 px-2 py-0.5 text-xs cursor-pointer"
+              className="text-slate-300 hover:text-white px-2 py-0.5 text-xs cursor-pointer"
             >
               ✕
             </button>
@@ -685,8 +728,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+      {/* Main Content Area (with safe bottom padding for mobile action dock) */}
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 w-full pb-28 lg:pb-8">
         {activeTab === 'orders' && (
           <OrdersView
             orders={orders}
@@ -806,6 +849,30 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Mobile Bottom Action Dock (Large Square Buttons) */}
+      <MobileActionDock
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenDriverID={() => {
+          setSelectedDriverForID(undefined);
+          setIsDriverIDOpen(true);
+        }}
+        onQuickWhatsApp={handleQuickWhatsApp}
+        ordersCount={orders.length}
+        unverifiedNotesCount={unverifiedNotesCount}
+        isOnline={isOnline}
+      />
+
+      {/* Digital Driver ID Modal */}
+      <DigitalDriverIDModal
+        isOpen={isDriverIDOpen}
+        onClose={() => setIsDriverIDOpen(false)}
+        initialDriverName={selectedDriverForID}
+        onProfileUpdated={(updated) => {
+          showToast(`תעודת הזהות של ${updated.fullName} עודכנה ונשמרה בזיכרון המכשיר`);
+        }}
+      />
 
       {/* Confirmation Modal for Workspace mutating actions */}
       <ConfirmModal

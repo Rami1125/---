@@ -1,0 +1,37 @@
+{
+  "name": "SabanOS — מערכת לוגיסטיקה ובקרת תעודות משלוח",
+  "short_name": "SabanOS 🚛",
+  "description": "מערכת תדריכים קוליים נועה AI, בקרת תעודות משלוח, סידור עבודה ואופליין למובייל",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B141A",
+  "theme_color": "#128C7E",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%23128C7E'/%3E%3Cpath d='M120 180h180v160H120z' fill='%23ffffff' opacity='0.9'/%3E%3Cpath d='M300 240h90l40 50v50h-130z' fill='%2325D366'/%3E%3Ccircle cx='180' cy='360' r='40' fill='%230B141A' stroke='%23ffffff' stroke-width='16'/%3E%3Ccircle cx='370' cy='360' r='40' fill='%230B141A' stroke='%23ffffff' stroke-width='16'/%3E%3Ctext x='256' y='140' font-family='sans-serif' font-size='64' font-weight='900' fill='%23ffffff' text-anchor='middle'%3ESABAN OS%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "הזמנות יומיות",
+      "url": "/#orders",
+      "description": "פתיחת סידור עבודה ושיגור"
+    },
+    {
+      "name": "תעודת זהות דיגיטלית",
+      "url": "/#driver_id",
+      "description": "כרטיס נהג וברקוד כניסה"
+    },
+    {
+      "name": "נועה AI קולי",
+      "url": "/#noa_voice",
+      "description": "תדריכים קוליים לנהגים"
+    }
+  ]
+}

@@ -176,3 +176,33 @@ export interface GoogleAuthState {
   error: string | null;
 }
 
+export interface DriverProfile {
+  id: string;
+  fullName: string;
+  idNumber: string; // תעודת זהות
+  driverLicense: string; // מספר רישיון
+  licenseType: string; // דרגת רישיון
+  truckNumber: string; // מספר משאית
+  truckType: 'משאית מנוף 🏗️' | 'דבל חול 🚛' | 'משאית חלוקה רגילה 📦' | 'טריילר כבד 🚚' | string;
+  phone: string;
+  warehouse: 'החרש' | 'התלמיד' | 'סבן - מרלו"ג ראשי' | string;
+  bloodType?: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  safetyCertificateExpiry: string; // תוקף רענון בטיחות
+  hazardousMaterialsPermit: boolean; // היתר חומ"ס
+  craneOperatorPermit: boolean; // מנופאי מוסמך
+  avatarUrl?: string;
+  issuedDate: string;
+  barcodeValue: string;
+}
+
+export interface OfflineSyncQueueItem {
+  id: string;
+  type: 'order_status' | 'order_add' | 'delivery_note_scan' | 'voice_dispatch';
+  payload: any;
+  createdAt: string;
+  synced: boolean;
+}
+
+
