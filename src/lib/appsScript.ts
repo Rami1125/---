@@ -10,6 +10,13 @@ export interface NormalizedOrderPayload {
   deposits: { blow: string; pallet: string };
 }
 
+export async function learnKeywordWithAppsScript(endpoint: string, payload: { sku: string; keyword: string; customerName?: string }) {
+  const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'learnKeyword', ...payload }) });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.ok === false) throw new Error(data?.error || 'שגיאה בשמירת מונח הלימוד');
+  return data;
+}
+
 export async function postOrderToAppsScript(endpoint: string, payload: NormalizedOrderPayload) {
   const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'createOrder', ...payload }) });
   const data = await response.json().catch(() => null);

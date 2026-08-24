@@ -17,6 +17,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (payload.action === 'learnKeyword') return learnKeyword_(payload);
     if (payload.action !== 'createOrder') return json_({ ok: false, error: 'Unknown action' });
     const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('הזמנות');
     if (!sheet) throw new Error('הטאב הזמנות לא נמצא');
@@ -25,4 +26,22 @@ function doPost(e) {
     sheet.appendRow([new Date(), orderNumber, payload.customerNumber || '', payload.customerName || '', payload.warehouse || '', payload.address || '', items, payload.deposits?.blow || '0 בלות', payload.deposits?.pallet || '0 משטחים', '', '', '', '', 'לא', 'בסידור עבודה', '', '', '']);
     return json_({ ok: true, orderNumber: orderNumber });
   } catch (error) { return json_({ ok: false, error: error.message }); }
+}
+
+function learnKeyword_(payload) {
+  const keyword = String(payload.keyword || '').trim();
+  const sku = String(payload.sku || '').trim();
+  if (!keyword || !sku) return json_({ ok: false, error: 'SKU ומונח נדרשים' });
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('מילון_לוגסטי');
+  if (!sheet) throw new Error('הטאב מילון_לוגסטי לא נמצא');
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const skuCol = headers.indexOf('SKU') >= 0 ? headers.indexOf('SKU') : 0;
+  const keywordCol = headers.indexOf('Keywords') >= 0 ? headers.indexOf('Keywords') : 8;
+  const rowIndex = values.findIndex(function(row, index) { return index > 0 && String(row[skuCol] || '').trim() === sku; });
+  if (rowIndex < 1) return json_({ ok: false, error: 'SKU לא נמצא במילון' });
+  const existing = String(values[rowIndex][keywordCol] || '').split(',').map(function(value) { return value.trim(); }).filter(Boolean);
+  if (existing.indexOf(keyword) < 0) existing.push(keyword);
+  sheet.getRange(rowIndex + 1, keywordCol + 1).setValue(existing.join(', '));
+  return json_({ ok: true, sku: sku, keyword: keyword, learned: existing.indexOf(keyword) >= 0 });
 }
