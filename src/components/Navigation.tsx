@@ -14,6 +14,7 @@ import {
 
 export type TabType =
   | 'orders'
+  | 'ai_normalizer'
   | 'noa_voice'
   | 'morning_report'
   | 'delivery_notes'
@@ -40,6 +41,14 @@ export const Navigation: React.FC<NavigationProps> = ({
   unverifiedNotesCount
 }) => {
   const tabs = [
+    {
+      id: 'ai_normalizer' as TabType,
+      label: 'הזמנה חדשה עם נועה',
+      icon: Sparkles,
+      badge: 'AI',
+      badgeColor: 'bg-emerald-100 text-emerald-800 font-bold',
+      sparkle: true
+    },
     {
       id: 'orders' as TabType,
       label: 'הזמנות ועבודה יומית',
