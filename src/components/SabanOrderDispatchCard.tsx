@@ -25,6 +25,12 @@ import {
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import {
+  generateNoaWhatsAppMessage,
+  generateNoaSpokenScript,
+  generateWhatsAppWebUrl,
+  cleanDriverName
+} from '../lib/MessageTemplates';
 
 export interface SabanOrder {
   orderId: string;
@@ -101,17 +107,15 @@ export const SabanOrderDispatchCard: React.FC<SabanOrderDispatchCardProps> = ({
   const handleSendWhatsAppText = () => {
     setIsSendingText(true);
 
-    const formattedMessage =
-      `🚚 *סידור עבודה חדש - ח. סבן בע"מ*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📋 *הזמנה:* #${order.orderId}\n` +
-      `👤 *לקוח:* ${order.customerName}\n` +
-      `📍 *כתובת אספקה:* ${order.address}\n` +
-      `🏢 *מחסן מוצא:* ${order.warehouse}\n` +
-      `👷 *נהג:* ${order.driverName}\n` +
-      `📦 *חומרים:*\n${order.materials.map((m) => `• ${m}`).join('\n')}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⏰ שעת שיגור: ${new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`;
+    const formattedMessage = generateNoaWhatsAppMessage({
+      driverName: order.driverName,
+      orderId: order.orderId,
+      customerName: order.customerName,
+      address: order.address,
+      warehouse: order.warehouse,
+      materials: order.materials,
+      audioUrl: `https://saban.link/v/${order.orderId}`
+    });
 
     setTimeout(() => {
       setIsSendingText(false);
@@ -119,9 +123,7 @@ export const SabanOrderDispatchCard: React.FC<SabanOrderDispatchCardProps> = ({
       setCurrentStatus('✅ שוגר טקסט בוואטסאפ');
 
       // Launch WhatsApp safely
-      const cleanPhone = (order.driverPhone || '0509620049').replace(/\D/g, '');
-      const waPhone = cleanPhone.startsWith('0') ? '972' + cleanPhone.slice(1) : cleanPhone;
-      const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(formattedMessage)}`;
+      const waUrl = generateWhatsAppWebUrl(order.driverPhone || '0509620049', formattedMessage);
 
       const a = document.createElement('a');
       a.href = waUrl;

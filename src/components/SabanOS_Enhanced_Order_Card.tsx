@@ -22,6 +22,10 @@ import {
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import {
+  generateEnhancedWhatsAppMessage,
+  generateWhatsAppWebUrl
+} from '../lib/MessageTemplates';
 
 export interface SabanProductItem {
   id?: string;
@@ -164,31 +168,24 @@ export const SabanOS_Enhanced_Order_Card: React.FC<SabanOSEnhancedOrderCardProps
       })
       .join('\n');
 
-    const audioShortUrl = `https://saban.link/v/${order.orderId}`;
-
-    const formattedMessage =
-      `👷‍♂️ היי *${order.driverName.split(' ')[0]}*,\n` +
-      `סידור העבודה שלך מוכן ליציאה.\n\n` +
-      `📦 *פרטי ההזמנה:*\n` +
-      `• הזמנה: *#${order.orderId}*\n` +
-      `• לקוח: *${order.customerName}*\n` +
-      `• כתובת: *${order.address}*\n` +
-      `• איסוף מ: *מחסן ${order.warehouse}*\n` +
-      `• חלון אספקה: *${order.slaWindow}*\n` +
-      `• משקל כולל: *${(order.totalWeightKg / 1000).toFixed(2)} טון* ⚖️\n\n` +
-      `📋 *תכולת הסחורה:*\n${materialsSummary}\n\n` +
-      `🎧 *מעדיף להאזין?* לחץ כאן לשמיעת התדריך הקולי:\n${audioShortUrl}\n\n` +
-      `סע בזהירות! 🚛\n` +
-      `_באדיבות נועה AI_ 🤖`;
+    const formattedMessage = generateEnhancedWhatsAppMessage({
+      driverName: order.driverName,
+      orderId: order.orderId,
+      customerName: order.customerName,
+      address: order.address,
+      warehouse: order.warehouse,
+      slaWindow: order.slaWindow,
+      totalWeightKg: order.totalWeightKg,
+      materials: materialsSummary,
+      audioUrl: `https://saban.link/v/${order.orderId}`
+    });
 
     setTimeout(() => {
       setIsSendingText(false);
       setTextSentSuccess(true);
       setCurrentStatus('✅ שוגר טקסט בוואטסאפ');
 
-      const cleanPhone = (order.driverPhone || '0509620049').replace(/\D/g, '');
-      const waPhone = cleanPhone.startsWith('0') ? '972' + cleanPhone.slice(1) : cleanPhone;
-      const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(formattedMessage)}`;
+      const waUrl = generateWhatsAppWebUrl(order.driverPhone || '0509620049', formattedMessage);
 
       const a = document.createElement('a');
       a.href = waUrl;
@@ -200,6 +197,7 @@ export const SabanOS_Enhanced_Order_Card: React.FC<SabanOSEnhancedOrderCardProps
 
       confetti({ particleCount: 60, spread: 65, origin: { y: 0.7 } });
       if (onDispatchSuccess) onDispatchSuccess(order.orderId, 'text');
+
       setTimeout(() => setTextSentSuccess(false), 3500);
     }, 1000);
   };
