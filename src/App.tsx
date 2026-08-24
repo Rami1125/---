@@ -11,6 +11,7 @@ import { CustomersView } from './components/CustomersView';
 import { SmartDashboardView } from './components/SmartDashboardView';
 import { LogisticsView } from './components/LogisticsView';
 import { LogisticsDictionaryView } from './components/LogisticsDictionaryView';
+import { AIOrderNormalizerView } from './components/AIOrderNormalizerView';
 import { SettingsView } from './components/SettingsView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { DigitalDriverIDModal } from './components/DigitalDriverIDModal';
@@ -730,6 +731,14 @@ export default function App() {
 
       {/* Main Content Area (with safe bottom padding for mobile action dock) */}
       <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 w-full pb-28 lg:pb-8">
+        {activeTab === 'ai_normalizer' && (
+          <AIOrderNormalizerView
+            dictionary={dictionary}
+            dispatchEndpoint={config.makeWebhookEndpoints[0]}
+            onShowToast={showToast}
+          />
+        )}
+
         {activeTab === 'orders' && (
           <OrdersView
             orders={orders}
