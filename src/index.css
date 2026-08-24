@@ -6,6 +6,9 @@ body { margin: 0; min-width: 320px; background: #f4f7f2; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 .normalizer-page { max-width: 1180px; margin: 0 auto; padding: 12px 0 42px; }
+.catalog-loading, .catalog-error { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+.catalog-loading { color: #176d4d; background: #e7f6ed; border: 1px solid #c6e6d1; }
+.catalog-error { color: #8b5a18; background: #fff7d8; border: 1px solid #efd982; }
 .page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #157a54; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .page-heading h1 { margin: 7px 0 5px; font-size: clamp(25px, 4vw, 36px); line-height: 1.15; letter-spacing: -.04em; }

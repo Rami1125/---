@@ -47,6 +47,7 @@ import {
 } from './lib/initialData';
 import { initAuth, googleSignIn, logout as authLogout } from './lib/auth';
 import { GoogleSheetsService } from './lib/googleSheets';
+import { fetchLiveDictionary } from './lib/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('orders');
@@ -75,9 +76,30 @@ export default function App() {
   const [customers, setCustomers] = useState<CustomerRecord[]>(INITIAL_CUSTOMERS);
   const [cities, setCities] = useState<CityRecord[]>(INITIAL_CITIES);
   const [dictionary, setDictionary] = useState<LogisticsDictionaryItem[]>(INITIAL_LOGISTICS_DICTIONARY);
+  const [isDictionaryLoading, setIsDictionaryLoading] = useState(true);
+  const [dictionaryError, setDictionaryError] = useState<string | null>(null);
   const [topProducts, setTopProducts] = useState<TopProduct[]>(INITIAL_TOP_PRODUCTS);
   const [predictions, setPredictions] = useState<StagePrediction[]>(INITIAL_STAGE_PREDICTIONS);
   const [recommendations, setRecommendations] = useState<ProcurementRecommendation[]>(INITIAL_RECOMMENDATIONS);
+
+  // Load the live product catalog immediately; the local dataset is only a temporary empty fallback.
+  useEffect(() => {
+    let cancelled = false;
+    fetchLiveDictionary()
+      .then((liveDictionary) => {
+        if (!cancelled && liveDictionary.length > 0) {
+          setDictionary(liveDictionary);
+          setDictionaryError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setDictionaryError(error instanceof Error ? error.message : 'לא ניתן לטעון את המילון החי');
+      })
+      .finally(() => {
+        if (!cancelled) setIsDictionaryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Lock orders into localStorage on every modification
   useEffect(() => {
@@ -734,6 +756,9 @@ export default function App() {
         {activeTab === 'ai_normalizer' && (
           <AIOrderNormalizerView
             dictionary={dictionary}
+            isDictionaryLoading={isDictionaryLoading}
+            dictionaryError={dictionaryError}
+            onDictionaryUpdate={setDictionary}
             dispatchEndpoint={config.makeWebhookEndpoints[0]}
             onShowToast={showToast}
           />
